@@ -364,7 +364,7 @@ export const students: Student[] = [
   {
     id: "995712859964",
     name: "POONAM MEHTA",
-    sno: "137892",
+    sno: "137895",
     fatherName: "GANAPAT LAL MEHATA",
     motherName: "LAXMI BAI",
     enrollmentNo: "2K21/4274",
