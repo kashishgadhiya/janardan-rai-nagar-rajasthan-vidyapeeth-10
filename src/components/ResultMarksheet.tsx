@@ -564,6 +564,14 @@ export default function ResultMarksheet({
                         const subjectGraceResult = graceResults.find(
                           (r) => r.subjectCode === subject.code
                         );
+                        
+                        // Debug grace results
+                        console.log(`Subject ${subject.code}:`, {
+                          subjectGraceResult,
+                          graceApplied: subjectGraceResult?.graceApplied,
+                          graceMarks: subjectGraceResult?.graceMarks,
+                          isPromoted: subjectGraceResult?.isPromoted
+                        });
 
                         const finalTotal = total;
                         const finalGrade =
