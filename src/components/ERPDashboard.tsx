@@ -202,135 +202,100 @@ export function ERPDashboard() {
     const theorySubjects = subjects.filter(
       (subject) => subject.type === "theory"
     );
+    const totalTheoryAggregate = theorySubjects.length * 100;
+    const maxGraceFromAggregate = Math.floor(totalTheoryAggregate * 0.01);
+    const maxAllowedGrace = Math.min(maxGraceFromAggregate, 6);
 
     const updatedMarks = studentMarks.map((entry) => {
-      // Calculate total theory aggregate
-      const totalTheoryAggregate = theorySubjects.length * 100;
+      // Find failing theory subjects
+      const failingTheory = theorySubjects
+        .map((subject) => {
+          const marks = entry.marks[subject.code] || { internal: 0, external: 0 };
+          const total = marks.internal + marks.external;
+          return {
+            subjectCode: subject.code,
+            total,
+            diff: 36 - total,
+          };
+        })
+        .filter((s) => s.total < 36 && s.diff > 0);
 
-      // Calculate max grace: 1% of aggregate OR 6, whichever is minimum
-      const maxGraceFromAggregate = Math.floor(totalTheoryAggregate * 0.01);
-      const maxAllowedGrace = Math.min(maxGraceFromAggregate, 6);
+      // Find the one closest to passing for grace
+      let graceSubjectCode = null;
+      let minDiff = Infinity;
+      failingTheory.forEach((s) => {
+        if (s.diff < minDiff && s.diff <= maxAllowedGrace) {
+          minDiff = s.diff;
+          graceSubjectCode = s.subjectCode;
+        }
+      });
 
-      let totalGraceNeeded = 0;
-      let failingSubjects = [];
+      // Calculate aggregate for promotion logic
+      const totalMarksObtained = subjects.reduce((sum, subj) => {
+        const mark = entry.marks[subj.code] || { internal: 0, external: 0 };
+        return sum + mark.internal + mark.external;
+      }, 0);
+      const totalMaxMarks = subjects.length * 100;
+      const aggregatePercentage = (totalMarksObtained / totalMaxMarks) * 100;
+      const isPromotedWith50Percent = aggregatePercentage >= 50;
 
-      // First pass: identify subjects that need grace
+      // Build graceResults per subject
       const graceResults = subjects.map((subject) => {
         const marks = entry.marks[subject.code] || { internal: 0, external: 0 };
-        const total = (marks.internal || 0) + (marks.external || 0);
+        const total = marks.internal + marks.external;
         const { grade, point } = calculateGrade(total);
 
         let graceApplied = false;
         let graceMarks = 0;
+        let isPromoted = false;
         let finalMarks = total;
-        let finalGrade = grade;
-        let finalPoint = point;
+        let gradeLetter = grade;
+        let gradePoint = point;
 
-        // BBA TT: Only theory subjects can get grace, need 36% minimum per subject
-        if (subject.type === "theory" && total < 36) {
-          const graceNeeded = 36 - total;
-          totalGraceNeeded += graceNeeded;
-          failingSubjects.push({
-            subjectCode: subject.code,
-            graceNeeded: graceNeeded,
-            total: total,
-          });
+        if (subject.code === graceSubjectCode) {
+          graceApplied = true;
+          graceMarks = minDiff;
+          finalMarks = total + graceMarks;
+          gradeLetter = calculateGrade(finalMarks).grade;
+          gradePoint = calculateGrade(finalMarks).point;
+        } else if (
+          total < 36 &&
+          total >= 30 &&
+          isPromotedWith50Percent &&
+          !graceApplied
+        ) {
+          isPromoted = true;
         }
 
         return {
           subjectCode: subject.code,
-          graceApplied: false, // Will be updated in second pass
-          graceMarks: 0, // Will be updated in second pass
-          finalMarks: total,
-          gradeLetter: grade,
-          gradePoint: point,
+          graceApplied,
+          graceMarks,
+          isPromoted,
+          finalMarks,
+          gradeLetter,
+          gradePoint,
         };
       });
 
-      // Second pass: apply grace if within limits
-      let actualGraceUsed = 0;
-      if (totalGraceNeeded > 0 && totalGraceNeeded <= maxAllowedGrace) {
-        graceResults.forEach((result) => {
-          const failingSubject = failingSubjects.find(
-            (f) => f.subjectCode === result.subjectCode
-          );
-
-          if (failingSubject) {
-            result.graceApplied = true;
-            result.graceMarks = failingSubject.graceNeeded;
-            result.finalMarks = 36; // With grace, minimum is 36%
-            result.gradeLetter = "C"; // Grade for 36 marks
-            result.gradePoint = 4;
-            actualGraceUsed += failingSubject.graceNeeded;
-          }
-        });
-      }
-
-      // Calculate SGPA to check 4.0 minimum requirement
-      const totalCredits = subjects.reduce(
-        (sum, subject) => sum + subject.credits,
-        0
-      );
-      const totalGradePoints = graceResults.reduce((sum, result, index) => {
-        return sum + result.gradePoint * subjects[index].credits;
-      }, 0);
-      const sgpa = totalCredits > 0 ? totalGradePoints / totalCredits : 0;
-
-      // Check aggregate percentage (40% minimum)
-      const totalMarks = graceResults.reduce(
-        (sum, result) => sum + result.finalMarks,
-        0
-      );
-      const totalMaxMarks = subjects.length * 100;
-      const aggregatePercentage = (totalMarks / totalMaxMarks) * 100;
-
-      // Check practical subjects separately (40% minimum)
-      const practicalSubjects = subjects.filter((s) => s.type === "practical");
-      let practicalFailed = false;
-      practicalSubjects.forEach((subject) => {
-        const marks = entry.marks[subject.code] || { internal: 0, external: 0 };
-        const total = (marks.internal || 0) + (marks.external || 0);
-        if (total < 40) {
-          // 40% for practical subjects
-          practicalFailed = true;
-        }
-      });
-
-      // Determine final status based on all BBA TT requirements
-      let graceStatus: "pass" | "grace" | "fail";
-      if (
-        totalGraceNeeded === 0 &&
-        sgpa >= 4.0 &&
-        aggregatePercentage >= 40 &&
-        !practicalFailed
-      ) {
-        graceStatus = "pass";
-      } else if (
-        totalGraceNeeded <= maxAllowedGrace &&
-        sgpa >= 4.0 &&
-        aggregatePercentage >= 40 &&
-        !practicalFailed
-      ) {
-        graceStatus = "grace";
-      } else {
-        graceStatus = "fail";
-      }
+      // Calculate overall grace status
+      const totalGrace = graceResults.reduce((sum, r) => sum + (r.graceMarks || 0), 0);
+      const hasFail = graceResults.some((r) => r.gradeLetter === "F" && !r.isPromoted && !r.graceApplied);
+      const graceStatus =
+        hasFail ? "fail" : totalGrace > 0 ? "grace" : "pass";
 
       return {
         ...entry,
         graceResults,
         grace: {
-          applied: graceStatus === "grace",
-          graceMarks: graceStatus === "grace" ? actualGraceUsed : 0,
+          applied: totalGrace > 0,
+          graceMarks: totalGrace,
           status: graceStatus,
         },
       };
     });
 
-    // Only update if changed
-    if (JSON.stringify(updatedMarks) !== JSON.stringify(studentMarks)) {
-      setStudentMarks(updatedMarks);
-    }
+    setStudentMarks(updatedMarks);
   }, [studentMarks, selectedCourse, selectedSemester]);
 
   const handleCourseSelect = (courseId: string) => {
