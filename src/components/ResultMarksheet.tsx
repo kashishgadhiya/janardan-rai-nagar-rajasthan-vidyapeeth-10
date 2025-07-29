@@ -591,20 +591,22 @@ export default function ResultMarksheet({
                         const subjectPercentage = (total / 100) * 100;
                         const hasSubjectPassed = subjectPercentage >= 36;
                         
-                        // Priority order: 1. Grace logic first, 2. Then promotion logic
+                        // Priority order: 1. Check grace FIRST, 2. Then promotion only if no grace
                         if (subject.code === "BBA(TT)403") {
                           remarks = "P";
                         } else if (
                           subjectGraceResult?.graceApplied &&
                           subjectGraceResult.graceMarks > 0
                         ) {
-                          // Grace takes priority - show "G" and don't check promotion
+                          // Grace takes absolute priority - show "G" 
                           remarks = "G";
                           showAsterisk = true;
-                        } else if (subjectGraceResult?.isPromoted) {
-                          remarks = "P";
-                        } else if (isPromotedWith50Percent && !hasSubjectPassed && subjectPercentage >= 30) {
-                          // Show "P" for promotion only if no grace was applied
+                        } else if (
+                          !subjectGraceResult?.graceApplied && 
+                          (subjectGraceResult?.isPromoted || 
+                           (isPromotedWith50Percent && !hasSubjectPassed && subjectPercentage >= 30))
+                        ) {
+                          // Show "P" for promotion ONLY if no grace was applied
                           remarks = "P";
                         }
 
